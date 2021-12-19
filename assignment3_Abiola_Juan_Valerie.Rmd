@@ -1,0 +1,177 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+---
+title: 'GDAA-1000 Assignment #3 - Implementing Machine Learning Models'
+author: "Abiola Falaye, Juan Reyes, Valerie Morin"
+date: "22/11/2021"
+documentclass: report
+output: 
+  pdf_document:
+    fig_caption: yes
+    toc: yes
+header-includes: 
+- \usepackage{float}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.pos="H")
+
+library(sf)
+library(tmap)
+library(caret) # Main ML library in R (also tidymodels)
+library(gbm) # Generalized boosting machine
+library(rpart) # For recursive partitioning (i.e., decision/regression trees)
+library(tidyverse)
+#library(gstat) # Geostatistics functions
+library(rgl) # 3D Renderer
+library(cluster)
+library(GGally)
+library(visNetwork) # Visualizing networks, including regression trees
+library(RColorBrewer)
+library(sparkline)
+
+students_performance <- read.csv("StudentsPerformance.csv")
+
+names(students_performance) <- c("gender", "ethnicity", "parental_education", "lunch", "test_prep_course", "math_score", "reading_score", "writing_score")
+
+# Convert to factors
+students_performance$gender <- factor(students_performance$gender)
+students_performance$ethnicity <- factor(students_performance$ethnicity)
+students_performance$parental_education <- factor(students_performance$parental_education)
+students_performance$lunch <- factor(students_performance$lunch)
+students_performance$test_prep_course <- factor(students_performance$test_prep_course)
+
+students_performance$test_avg <- (students_performance$math_score + students_performance$reading_score + students_performance$writing_score) / 3
+
+avg_model <- rpart(test_avg ~., data = select(students_performance, -reading_score, -math_score, -writing_score))
+```
+
+## The Numeric Target variable `test_avg`
+
+Average student performance is the target variable that was modelled in the decision/regression tree. The variable is a numerical variable, ranging from 9 – 100, obtained by averaging the scores earned by the students in Math, Reading and Writing. 
+
+## The predictors Included in the Model
+
+The average student performance was determined based on the results obtained from four different categorical variables. These variables, including the lunch type, parental education, gender of the student, and participation in test preparation, were used to predict the overall level of student performance. A summary of the predictors and the categories of response obtained from the dataset is summarized in the figure below.
+
+
+
+# Intro to Tree-Based Models
+
+Tree based models (both classification and regression trees) are models which provide the results of logical tests on input variables.
+In practice, these models partition the input space defined as input variables from the user. The partitioning functions are carefully defined
+logical tests which act on the input variables. As a result, partitions of the collection of cases are assigned the same prediction (either a class label, or numeric value).
+These models are well known for rigorous flexibility for analysts, many of these models offer computational efficiency, interpretability, variable selection, handling of unknown variable values.
+
+## Structure
+
+Most tree-based models are binary trees which partition at a node based on a particular logical test.
+
+For tests on numerical predictors $x_{i}$. they take the form $x_{i} < \alpha$, with $\alpha \in \mathbf{R}$ denoting a numerical threshold.
+For tests on nominal predictors $x_{j}$, they take the form $x_{j} \in {v_{1},...,v_{m}}$ where $V_{m}$ denotes the set of classification classes.
+The tree begins at the root note which partitions into leaves which represent a logical condition defining a region of the predictors space.
+Each observation which "falls" on a particular leaf are assigned the same prediction.
+
+For classification, the majority class of the training cases for that leaf is assigned.
+For numerical prediction, the average value of the target variable is considered when assigning a prediction.
+
+Thus, for new test cases a prediction is obtained by following a path from the root through leaf systems according to the case predictors' values.
+
+
+# Classification and Regression Trees in R (CART)
+
+## The 'rpart' package
+
+To perform classification on this data set, we import the 'rpart' package. This package is used to perform recursive partitioning and regression trees on a data set. The documentation for the rpart function is visible here: https://www.rdocumentation.org/packages/rpart/versions/4.1-15/topics/rpart. The mathematical implementation of CART through this r package is based on 'Classification Algorithms and Regression Trees' from Breiman et al (https://rafalab.github.io/pages/649/section-11.pdf).   
+
+## CART overview
+
+The classification algorithm and regression trees (CART) follows the following basic principles to create classifications:
+
+1. Grow an overly large tree using forward selection, at each step find the best split. Continue growing the tree until:
+
+- The split contains $<n$ data points, where $n$ is a predefined bin 'size'.
+
+- The split is 'pure' in the sense that all points in a node have 'almost' the same outcome.
+
+2. Prune the tree, creating a nested sequence of trees, decreasing in complexity.
+
+3. Define a measure of categorical 'impurity' to rank and review the measure of impurity at each leaf in the tree.
+- Classification trees often use the Gini score or Entropy to quantify post-pruning of the acquired results.
+
+
+    Entropy: $E(S) = \sum_{i,k}p_{ik} log(p_{ik})$ \
+
+
+    Gini Index: $G(P) = 1 - \sum_{i=1}^{n} (P_{i})^{2}$
+
+
+- Regression trees use the least squares error criterion and it uses Error-Complexity post-pruning to avoid over fitting.
+
+    $D = \sum_{cases j} = (y_{j} - \mu_{[j]})^{2}$ 
+    
+    where $\mu_{[j]}$ represents the mean of values in the node that case $j$ belongs to. It turns out mathematically, that $\mu_{[j]}$ is also the constant that minimizes the least squares criterion for error.
+
+## The Good
+Decision trees are very useful since they arise naturally when constructing decision making models. These are simple and visually simple to explain to non-statisticians. They are able to handle missing or erroneous data rather well, and have a well defined mathematical impurity functions to maximize in order to select a best model.
+
+## The Bad
+Given the size of the data however, the model might not converge to a 'best' model at all. In addition, due to the nature of data aggregation it might be difficult to assess the uncertainty in class inference for a given tree. In addition, tree structures are very sensitive to the data presented, and thus the tree structure itself depends from the training data presented. 
+
+Additional Sources: https://medium.com/analytics-steps/understanding-the-gini-index-and-information-gain-in-decision-trees-ab4720518ba8
+https://towardsdatascience.com/entropy-how-decision-trees-make-decisions-2946b9c18c8
+
+L. Torgo: https://web.cs.dal.ca/~ltorgo/FDSR/Slides/treeModels_handouts.pdf
+
+
+# Pseudocode
+## Recursive Partitioning Algorithm
+
+
+| **Function:** RecursivePartitioning(D):
+| **Input:** D, a sample of cases, $(<X_{training},Y_{target})$
+| **Output:** t, a tree node
+| 
+| **IF** (termination criteria) then,
+|       Return a leaf node with the majority class in D 
+| **Else**
+|       t <- new tree node 
+|       t.split <- (Best Predictors Test)
+|       t.leftNode <- RecursivePartitioning($x \in D: x = t.split$)
+|       t.rightNode <- RecursivePartitioning($x \in D: x \ne t.split$) 
+|       Return the node t
+| **End If**
+| **End Function** 
+
+Source: https://web.cs.dal.ca/~ltorgo/FDSR/Slides/treeModels_handouts.pdf
+
+
+
+
+## The visNetwork package
+visNetwork is an R package for network visualization which uses the vis.js javascript library. We will be using the visTree() function  to visualize classification and regression trees from the output from the 'rpart' package listed above (http://datastorm-open.github.io/visNetwork/tree.html).
+
+
+# Tree Generated with `VisTree()`
+
+```{r fig.align = "center", fig.cap = "Regression tree depicting prediction of student performance.", echo = F, warning = F, message = F}
+visTree(avg_model, legend=F, collapse=T, direction='LR')
+```
+
+
+
+
+### Any Insights Stemming from your Model
+
+This model shows the predictors which lead to different outcomes of a target variable defined as student performance on a series of three tests. The average of these tests can be modeled by factors which influenced a student’s performance on each examination (math, reading, and writing). 
+
+These factors which appear in the regression tree are `lunch`, `test_prep_course`, `gender` and `parental_education` and may be used to predict what score a student would receive given a set of information pertaining to the student’s background. The greatest predictors as seen in the model are `lunch`, `test_prep_course`, and `parental_education`. 
+
+A student who received a standard lunch is more likely to score higher on all three tests as opposed to a student who received a free/reduced lunch. A student who completed the test preparation course is also more likely to score higher on all three tests as opposed to a student who did not complete this preparation course. Finally, a student who had a parent complete a form of higher education is more likely to perform well on these tests as to students whose parents had solely completed high school. 
+
+The takeaway from this model is that there are three main factors which determine how well a student performed on these three basic tests: **diet**, **preparedness**, and **background environment**. A student who received standard lunches, completed the preparation course, and comes from a more educated household is more likely to score in the top percentile for these exams. A student who received reduced lunches, did not attempt the preparation course, and comes from a less educated household is likely to end up within the lowest percentile for these exams.
+
+
+ 
